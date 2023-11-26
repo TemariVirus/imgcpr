@@ -1,0 +1,3 @@
+# imgcpr
+
+Experimental image compression.
