@@ -27,7 +27,8 @@ fn main() {
 
         let img = image::open(args.path).unwrap();
         let img = img.into_rgba8();
-        compress::save(&img, output).unwrap();
+        let bytes = compress::compress(&img);
+        std::fs::write(output, bytes).unwrap();
     } else {
         let output = args
             .output

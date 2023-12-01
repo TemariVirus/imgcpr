@@ -1,17 +1,13 @@
 use crate::Image;
 use image::Rgba;
-use std::{
-    ops::{BitOrAssign, Shl},
-    slice::Iter,
-};
+use std::ops::{BitOrAssign, Shl};
 
 pub fn decompress(bytes: &[u8]) -> Image {
-    let mut bytes = bytes.iter();
+    let mut bytes = bytes.iter().copied().peekable();
     let width: u32 = read(&mut bytes);
     let height: u32 = read(&mut bytes);
 
-    let log2_palette_size = read::<u32>(&mut bytes) as u8;
-    let palette_size = 2usize.pow(log2_palette_size as u32);
+    let palette_size = read::<u32>(&mut bytes) as usize;
     let mut palette = Vec::with_capacity(palette_size);
     for _ in 0..palette_size {
         let color: Rgba<u8> = Rgba([
@@ -24,21 +20,25 @@ pub fn decompress(bytes: &[u8]) -> Image {
     }
 
     let mut img = Image::new(width, height);
-    for pixel in img.pixels_mut() {
-        let index = read::<u8>(&mut bytes) as usize;
-        *pixel = palette[index];
+    for (i, pixel) in img.pixels_mut().enumerate() {
+        let index = if i % 2 == 0 {
+            *bytes.peek().unwrap() & 0b00001111
+        } else {
+            bytes.next().unwrap() >> 4
+        };
+        *pixel = palette[index as usize];
     }
 
     img
 }
 
-fn read<T>(bytes: &mut Iter<u8>) -> T
+fn read<T>(bytes: &mut dyn Iterator<Item = u8>) -> T
 where
     T: Default + Copy + From<u8> + Shl<usize, Output = T> + BitOrAssign<T>,
 {
     let mut value = T::default();
     for i in 0..std::mem::size_of::<T>() {
-        let byte: T = (*bytes.next().unwrap_or(&0)).into();
+        let byte: T = bytes.next().unwrap_or(0).into();
         value |= byte << (i * 8);
     }
     value
