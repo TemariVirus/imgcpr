@@ -1,5 +1,7 @@
 use clap::Parser;
 use imgcpr::{compress, decompress};
+use libflate::deflate::{Decoder, Encoder};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 /// Compress or decompress image files with imgcpr format
@@ -26,8 +28,14 @@ fn main() {
         });
 
         let img = image::open(args.path).unwrap();
+
         let img = img.into_rgba8();
         let bytes = compress::compress(&img);
+
+        let mut encoder = Encoder::new(Vec::new());
+        encoder.write_all(&bytes).unwrap();
+        let bytes = encoder.finish().into_result().unwrap();
+
         std::fs::write(output, bytes).unwrap();
     } else {
         let output = args
@@ -35,6 +43,11 @@ fn main() {
             .expect("Output path is required for decompression");
 
         let bytes = std::fs::read(args.path).unwrap();
+
+        let mut decoder = Decoder::new(&bytes[..]);
+        let mut bytes = Vec::new();
+        _ = decoder.read_to_end(&mut bytes).unwrap();
+
         let img = decompress::decompress(&bytes);
         img.save(output).unwrap();
     }
