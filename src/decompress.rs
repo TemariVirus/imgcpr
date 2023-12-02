@@ -1,5 +1,5 @@
 use crate::Image;
-use image::Rgba;
+use image::Rgb;
 use std::ops::{BitOrAssign, Shl};
 
 pub fn decompress(bytes: &[u8]) -> Image {
@@ -10,17 +10,13 @@ pub fn decompress(bytes: &[u8]) -> Image {
     let palette_size = read::<u32>(&mut bytes) as usize;
     let mut palette = Vec::with_capacity(palette_size);
     for _ in 0..palette_size {
-        let color: Rgba<u8> = Rgba([
-            read(&mut bytes),
-            read(&mut bytes),
-            read(&mut bytes),
-            read(&mut bytes),
-        ]);
+        let color = Rgb([read(&mut bytes), read(&mut bytes), read(&mut bytes)]);
         palette.push(color);
     }
 
     let mut img = Image::new(width, height);
     for (i, pixel) in img.pixels_mut().enumerate() {
+        // TODO: Handle palatte sizes other than 16
         let index = if i % 2 == 0 {
             *bytes.peek().unwrap() & 0b00001111
         } else {

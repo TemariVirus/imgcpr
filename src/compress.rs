@@ -1,12 +1,14 @@
+use crate::{
+    color::{RGBf32, RGBu8},
+    kmeans, Distance, Image, PaletteMethod,
+};
 use std::collections::HashMap;
 
-use crate::{nearest_color, Distance, Image, Pixel};
-use image::Rgba;
-
-pub fn compress(img: &Image) -> Vec<u8> {
+pub fn compress(img: &Image, palette_method: PaletteMethod) -> Vec<u8> {
     const LOG2_PALETTE_SIZE: u8 = 4;
 
     let mut bytes = Vec::with_capacity(12 + 64 + (img.width() * img.height()) as usize);
+    let pixels: Vec<_> = img.pixels().map(|&p| RGBf32::from(p)).collect();
 
     // Header
     let width = img.width().to_le_bytes();
@@ -14,9 +16,13 @@ pub fn compress(img: &Image) -> Vec<u8> {
     bytes.extend_from_slice(&width);
     bytes.extend_from_slice(&height);
 
-    let palette_size = 2usize.pow(LOG2_PALETTE_SIZE as u32);
-    let palette = get_palette(img, palette_size);
-    assert!(palette.len() <= palette_size);
+    let palette_size = 2u16.pow(LOG2_PALETTE_SIZE as u32);
+    let palette = match palette_method {
+        PaletteMethod::CIELab => unimplemented!(),
+        PaletteMethod::Freq => get_palette_freq(&pixels, palette_size),
+        PaletteMethod::KMeans => get_palette_k_means(&pixels, palette_size),
+    };
+    assert!(palette.len() <= palette_size as usize);
     bytes.extend_from_slice(&(palette.len() as u32).to_le_bytes());
 
     for &color in &palette {
@@ -24,8 +30,8 @@ pub fn compress(img: &Image) -> Vec<u8> {
     }
 
     // Data
-    for (i, &pixel) in img.pixels().enumerate() {
-        let index = nearest_color(&palette, pixel);
+    for (i, pixel) in pixels.iter().enumerate() {
+        let index = pixel.nearest_color(&palette);
         // Each index is 4 bits, so we can fit 2 indices in a byte
         if i % 2 == 0 {
             bytes.push(index);
@@ -37,15 +43,15 @@ pub fn compress(img: &Image) -> Vec<u8> {
     bytes
 }
 
-fn get_palette(img: &Image, palette_size: usize) -> Vec<Pixel> {
-    let mut palette = Vec::with_capacity(palette_size);
-    palette.push(Rgba([0, 0, 0, 0]));
+/// Get a palette of the most frequently used colors in the image
+fn get_palette_freq(pixels: &[RGBf32], palette_size: u16) -> Vec<RGBu8> {
+    let palette_size = palette_size as usize;
+    let mut palette: Vec<RGBu8> = Vec::with_capacity(palette_size);
 
     // Group and count colors
     let mut color_counts = HashMap::new();
-    for &pixel in img.pixels() {
-        let color = [pixel[0] >> 4 << 4, pixel[1] >> 4 << 4, pixel[2] >> 4 << 4];
-        let count = color_counts.entry(color).or_insert(0);
+    for &pixel in pixels.iter() {
+        let count = color_counts.entry(pixel).or_insert(0u32);
         *count += 1;
     }
     // Collect and sort in ascending order
@@ -61,14 +67,23 @@ fn get_palette(img: &Image, palette_size: usize) -> Vec<Pixel> {
         // Skip color if it's too close to another color in the palette
         if palette
             .iter()
-            .map(|&p| [p[0], p[1], p[2]])
-            .any(|p| p.distance(&color) < 32f64.powi(2))
+            .map(|&p| p.into())
+            // TODO: parameterise the treshold
+            .any(|p: RGBf32| p.distance2(&color) < 0.015625)
         {
             continue;
         }
 
-        palette.push(Rgba([color[0], color[1], color[2], 255]));
+        palette.push(color.into());
     }
 
     palette
+}
+
+/// Get a palette by running k-means clustering on the image's colors
+fn get_palette_k_means(pixels: &[RGBf32], palette_size: u16) -> Vec<RGBu8> {
+    kmeans::fit(pixels, palette_size as usize, 10)
+        .into_iter()
+        .map(|p| p.into())
+        .collect()
 }

@@ -1,5 +1,5 @@
 use clap::Parser;
-use imgcpr::{compress, decompress};
+use imgcpr::{compress, decompress, PaletteMethod};
 use libflate::deflate::{Decoder, Encoder};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -10,13 +10,21 @@ struct Cli {
     /// Path to the image file
     path: PathBuf,
     /// Flag for compression
-    #[arg(short = 'c', long = "compress", action)]
+    #[arg(action, short = 'c', long = "compress")]
     compress: bool,
     /// Output path
     #[arg(short = 'o', long = "output")]
     output: Option<PathBuf>,
+    /// Palette selection method
+    #[arg(value_enum,
+        short = 'p',
+        long = "palette",
+        default_value_t = PaletteMethod::Freq)]
+    palette: PaletteMethod,
 }
 
+// TODO: try png- or qoi-like compression on index data
+// Deflate performs best, at 122.1 KB for bright-colors
 fn main() {
     let args = Cli::parse();
 
@@ -29,8 +37,8 @@ fn main() {
 
         let img = image::open(args.path).unwrap();
 
-        let img = img.into_rgba8();
-        let bytes = compress::compress(&img);
+        let img = img.into_rgb8();
+        let bytes = compress::compress(&img, args.palette);
 
         let mut encoder = Encoder::new(Vec::new());
         encoder.write_all(&bytes).unwrap();
