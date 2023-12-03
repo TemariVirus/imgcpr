@@ -7,8 +7,8 @@ pub fn decompress(bytes: &[u8]) -> Image {
     let width: u32 = read(&mut bytes);
     let height: u32 = read(&mut bytes);
 
-    let palette_size = read::<u32>(&mut bytes) as usize;
-    let mut palette = Vec::with_capacity(palette_size);
+    let palette_size = read::<u32>(&mut bytes).try_into().unwrap();
+    let mut palette: Vec<Rgb<u8>> = Vec::with_capacity(palette_size);
     for _ in 0..palette_size {
         let color = Rgb([read(&mut bytes), read(&mut bytes), read(&mut bytes)]);
         palette.push(color);
@@ -22,7 +22,7 @@ pub fn decompress(bytes: &[u8]) -> Image {
         } else {
             bytes.next().unwrap() >> 4
         };
-        *pixel = palette[index as usize];
+        *pixel = palette[usize::from(index)];
     }
 
     img
