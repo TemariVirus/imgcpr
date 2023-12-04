@@ -21,12 +21,34 @@ struct Cli {
         long = "palette",
         default_value_t = PaletteMethod::Freq)]
     palette: PaletteMethod,
+    /// Debug mode
+    #[arg(action, short = 'd', long = "debug")]
+    debug: bool,
 }
 
 // TODO: try png- or qoi-like compression on index data
 // Deflate performs best, at 122.1 KB for bright-colors
 fn main() {
     let args = Cli::parse();
+
+    if args.debug {
+        println!("Args: {:#?}", args);
+        let output = args.output.unwrap_or_else(|| {
+            let mut path = args.path.clone();
+            let name = path.file_stem().unwrap().to_str().unwrap().to_owned();
+            path.set_file_name(name + ".debug.png");
+            path
+        });
+
+        let img = image::open(args.path).unwrap().into_rgb8();
+        let bytes = compress::compress(&img, args.palette);
+
+        let img = decompress::decompress(&bytes);
+        println!("Saving image to: {:?}", output);
+        img.save(output).unwrap();
+
+        return;
+    }
 
     if args.compress {
         let output = args.output.unwrap_or_else(|| {
@@ -35,9 +57,7 @@ fn main() {
             path
         });
 
-        let img = image::open(args.path).unwrap();
-
-        let img = img.into_rgb8();
+        let img = image::open(args.path).unwrap().into_rgb8();
         let bytes = compress::compress(&img, args.palette);
 
         let mut encoder = Encoder::new(Vec::new());

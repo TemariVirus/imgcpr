@@ -1,5 +1,7 @@
 use super::{
+    cielab::CieLab,
     lms::{Lms, NonLinearLms},
+    xyz::Xyz,
     Itp,
 };
 use crate::Distance;
@@ -49,17 +51,44 @@ impl From<Lms> for RgbU8 {
     fn from(lms: Lms) -> Self {
         let lms = lms.0.map(|lms| lms * 255.0);
         RgbU8([
-            (3.43661 * lms[0] - 2.50645 * lms[1] + 0.0698454 * lms[2]) as u8,
-            (-0.79133 * lms[0] + 1.9836 * lms[1] - 0.192271 * lms[2]) as u8,
-            (-0.0259499 * lms[0] - 0.0989137 * lms[1] + 1.12486 * lms[2]) as u8,
+            (3.43661 * lms[0] - 2.50645 * lms[1] + 0.0698454 * lms[2]).round() as u8,
+            (-0.79133 * lms[0] + 1.9836 * lms[1] - 0.192271 * lms[2]).round() as u8,
+            (-0.0259499 * lms[0] - 0.0989137 * lms[1] + 1.12486 * lms[2]).round() as u8,
         ])
+    }
+}
+
+impl From<Xyz> for RgbU8 {
+    fn from(xyz: Xyz) -> Self {
+        let rgb = [
+            3.24045 * xyz[0] - 1.53714 * xyz[1] - 0.498532 * xyz[2],
+            -0.969266 * xyz[0] + 1.87601 * xyz[1] + 0.0415561 * xyz[2],
+            0.0556434 * xyz[0] - 0.204026 * xyz[1] + 1.05723 * xyz[2],
+        ];
+
+        // Un-adjust RGB values
+        RgbU8(rgb.map(|x| {
+            let x = if x <= 0.0031308 {
+                x * 12.92
+            } else {
+                1.055 * x.powf(1.0 / 2.4) - 0.055
+            };
+            (x * 255.0).round() as u8
+        }))
     }
 }
 
 impl From<Itp> for RgbU8 {
     fn from(itp: Itp) -> Self {
-        let nllms: NonLinearLms = itp.into();
-        let lms: Lms = nllms.into();
+        let nllms = NonLinearLms::from(itp);
+        let lms = Lms::from(nllms);
         lms.into()
+    }
+}
+
+impl From<CieLab> for RgbU8 {
+    fn from(cielab: CieLab) -> Self {
+        let xyz = Xyz::from(cielab);
+        xyz.into()
     }
 }

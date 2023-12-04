@@ -1,7 +1,4 @@
-use super::{
-    lms::{Lms, NonLinearLms},
-    RgbU8,
-};
+use super::{xyz::Xyz, RgbU8};
 use crate::{Distance, Zero};
 use image::Rgb;
 use std::{
@@ -10,11 +7,11 @@ use std::{
     ops::{AddAssign, Div, Index},
 };
 
-// https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.2124-0-201901-I!!PDF-E.pdf
+// https://en.wikipedia.org/wiki/CIELAB_color_space
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Itp(pub [f32; 3]);
+pub struct CieLab(pub [f32; 3]);
 
-impl AddAssign for Itp {
+impl AddAssign for CieLab {
     fn add_assign(&mut self, rhs: Self) {
         self.0[0] += rhs[0];
         self.0[1] += rhs[1];
@@ -22,15 +19,15 @@ impl AddAssign for Itp {
     }
 }
 
-impl Div<f32> for Itp {
+impl Div<f32> for CieLab {
     type Output = Self;
 
     fn div(self, rhs: f32) -> Self::Output {
-        Itp(self.0.map(|x| x / rhs))
+        CieLab(self.0.map(|x| x / rhs))
     }
 }
 
-impl Index<usize> for Itp {
+impl Index<usize> for CieLab {
     type Output = f32;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -38,7 +35,7 @@ impl Index<usize> for Itp {
     }
 }
 
-impl Sum for Itp {
+impl Sum for CieLab {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let mut sum = [0f32; 3];
         for rgb in iter {
@@ -46,56 +43,62 @@ impl Sum for Itp {
             sum[1] += rgb[1];
             sum[2] += rgb[2];
         }
-        Itp(sum)
+        CieLab(sum)
     }
 }
 
-impl Distance for Itp {
+impl Distance for CieLab {
     type Output = f32;
 
     fn distance(&self, other: &Self) -> Self::Output {
-        720.0 * self.distance2(other).sqrt()
+        self.distance2(other).sqrt()
     }
 
     fn distance2(&self, other: &Self) -> Self::Output {
-        // Euclidean distance squared
-        let dr = self[0] - other[0];
-        let dg = self[1] - other[1];
+        // TODO: use CIEDE2000 for better results
+        let dl = self[0] - other[0];
+        let da = self[1] - other[1];
         let db = self[2] - other[2];
-        dr * dr + dg * dg + db * db
+        dl * dl + da * da + db * db
     }
 }
 
-impl Zero for Itp {
+impl Zero for CieLab {
     fn zero() -> Self {
-        Itp([0.0, 0.0, 0.0])
+        CieLab([0.0, 0.0, 0.0])
     }
 }
 
-impl From<Rgb<u8>> for Itp {
+impl From<Rgb<u8>> for CieLab {
     fn from(rgb: Rgb<u8>) -> Self {
         let rgb = RgbU8::from(rgb);
-        let lms = Lms::from(rgb);
-        let nllms = NonLinearLms::from(lms);
-        nllms.into()
+        let xyz = Xyz::from(rgb);
+        xyz.into()
     }
 }
 
-impl From<NonLinearLms> for Itp {
-    fn from(nllms: NonLinearLms) -> Self {
-        Itp([
-            0.5 * nllms[0] + 0.5 * nllms[1],
-            // 0.806884765625, 1.6617431640625, 0.8548583984375
-            0.80688477 * nllms[0] - 1.6617432 * nllms[1] + 0.8548584 * nllms[2],
-            // 4.378173828125, 4.24560546875, 0.132568359375
-            4.378174 * nllms[0] - 4.2456055 * nllms[1] - 0.13256836 * nllms[2],
-        ])
+impl From<Xyz> for CieLab {
+    fn from(xyz: Xyz) -> Self {
+        // Adjust XYZ values
+        let xyz = xyz.0.map(|x| {
+            if x > 0.008856 {
+                x.powf(1.0 / 3.0)
+            } else {
+                7.78704 * x + 16.0 / 116.0
+            }
+        });
+
+        let l = 116.0 * xyz[1] - 16.0;
+        let a = 500.0 * (xyz[0] - xyz[1]);
+        let b = 200.0 * (xyz[1] - xyz[2]);
+
+        CieLab([l, a, b])
     }
 }
 
-impl Eq for Itp {}
+impl Eq for CieLab {}
 
-impl Hash for Itp {
+impl Hash for CieLab {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.0[0].to_bits().hash(state);
         self.0[1].to_bits().hash(state);

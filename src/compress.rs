@@ -1,5 +1,5 @@
 use crate::{
-    color::{Itp, RgbU8},
+    color::{CieLab, Itp, RgbU8},
     kmeans, Distance, Image, PaletteMethod,
 };
 use std::collections::HashMap;
@@ -52,7 +52,7 @@ fn compress_freq(bytes: &mut Vec<u8>, img: &Image) {
 
 fn compress_k_means(bytes: &mut Vec<u8>, img: &Image) {
     let palette_size = 2u16.pow(LOG2_PALETTE_SIZE.into());
-    let pixels: Vec<Itp> = img.pixels().map(|&p| p.into()).collect();
+    let pixels: Vec<CieLab> = img.pixels().map(|&p| p.into()).collect();
     let palette = get_palette_k_means(&pixels, palette_size);
 
     // Header
@@ -113,7 +113,7 @@ fn get_palette_freq(img: &Image, palette_size: u16) -> Vec<RgbU8> {
 }
 
 /// Get a palette by running k-means clustering on the image's colors
-fn get_palette_k_means(pixels: &[Itp], palette_size: u16) -> Vec<Itp> {
+fn get_palette_k_means(pixels: &[CieLab], palette_size: u16) -> Vec<CieLab> {
     // TODO: Compare with CIEDE2000
     kmeans::fit(pixels, palette_size.into(), 0.00005, 250)
 }
